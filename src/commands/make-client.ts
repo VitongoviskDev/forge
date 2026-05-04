@@ -13,7 +13,7 @@ export async function makeClientCommand(
 
   const config = ensureForgeInitialized();
 
-  const apiClientPath = path.join(cwd, config.apiFile);
+  const apiClientPath = path.join(cwd, config.project.apiFile);
 
   if (!fs.existsSync(apiClientPath)) {
     console.error("❌ api-client.ts não encontrado.");

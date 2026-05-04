@@ -17,11 +17,11 @@ export async function makeServiceCommand(name: string) {
   let apiImportPath = "";
   let utilsImportPath = "@/utils/api.utils";
 
-  if (config.structure === "layer") {
-    filePath = path.join(cwd, config.paths.service, `${camelName}.service.ts`);
+  if (config.project.architecture === "layer") {
+    filePath = path.join(cwd, config.project.paths.service, `${camelName}.service.ts`);
     apiImportPath = `@/api/${camelName}.api`;
   } else {
-    const moduleDir = path.join(cwd, config.modulePath, camelName);
+    const moduleDir = path.join(cwd, config.project.modulePath, camelName);
     await fs.ensureDir(moduleDir);
 
     filePath = path.join(moduleDir, `${camelName}.service.ts`);

@@ -16,11 +16,11 @@ export async function makeApiCommand(name: string) {
   let filePath = "";
   let apiImportPath = "";
 
-  if (config.structure === "layer") {
-    filePath = path.join(cwd, config.paths.api, `${camelName}.api.ts`);
+  if (config.project.architecture === "layer") {
+    filePath = path.join(cwd, config.project.paths.api, `${camelName}.api.ts`);
     apiImportPath = "./api-client";
   } else {
-    const moduleDir = path.join(cwd, config.modulePath, camelName);
+    const moduleDir = path.join(cwd, config.project.modulePath, camelName);
     await fs.ensureDir(moduleDir);
 
     filePath = path.join(moduleDir, `${camelName}.api.ts`);

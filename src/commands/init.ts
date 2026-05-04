@@ -4,20 +4,13 @@ import readline from "readline";
 import { execSync } from "child_process";
 import { fileExists, readJson, writeFileSafe } from "../utils/file.js";
 import { loadTemplate } from "../utils/template.js";
-
-const CONFIG_NAME = ".forge.json";
-
-type ForgeConfig = {
-  structure: "layer" | "module";
-  paths: {
-    api: string;
-    service: string;
-    types: string;
-    hooks: string;
-  };
-  modulePath: string;
-  apiFile: string;
-};
+import { 
+  ForgeConfig, 
+  saveConfig, 
+  saveData, 
+  saveState, 
+  getConfigPath 
+} from "../utils/config.js";
 
 // 🔹 prompt simples
 function askUser(question: string): Promise<string> {
@@ -36,7 +29,7 @@ function askUser(question: string): Promise<string> {
 
 export async function initCommand(options: { overwrite?: boolean }) {
   const cwd = process.cwd();
-  const configPath = path.join(cwd, CONFIG_NAME);
+  const configPath = getConfigPath();
 
   // 🔒 já inicializado
   if (fileExists(configPath) && !options.overwrite) {
@@ -97,36 +90,67 @@ export async function initCommand(options: { overwrite?: boolean }) {
     "\nQual estrutura deseja usar?\n1 - Por camada\n2 - Por módulo\nEscolha (1/2): "
   );
 
+  const syncAnswer = await askUser(
+    "\nQual o modo de sincronização?\n1 - Automático (auto)\n2 - Manual (manual)\nEscolha (1/2): "
+  );
+
   let config: ForgeConfig;
+  const syncMode = syncAnswer === "2" ? "manual" : "auto";
 
   if (structureAnswer === "2") {
     config = {
-      structure: "module",
-      paths: {
-        api: "",
-        service: "",
-        types: "",
-        hooks: "",
+      project: {
+        architecture: "module",
+        paths: {
+          api: "",
+          service: "",
+          types: "",
+          hooks: "",
+        },
+        modulePath: "src/modules",
+        apiFile: "src/modules/api/api-client.ts",
       },
-      modulePath: "src/modules",
-      apiFile: "src/api/api-client.ts",
+      sync: {
+        mode: syncMode,
+      },
     };
   } else {
     config = {
-      structure: "layer",
-      paths: {
-        api: "src/api",
-        service: "src/services",
-        types: "src/types",
-        hooks: "src/hooks",
+      project: {
+        architecture: "layer",
+        paths: {
+          api: "src/api",
+          service: "src/services",
+          types: "src/types",
+          hooks: "src/hooks",
+        },
+        modulePath: "",
+        apiFile: "src/api/api-client.ts",
       },
-      modulePath: "",
-      apiFile: "src/api/api-client.ts",
+      sync: {
+        mode: syncMode,
+      },
     };
   }
 
   // 💾 salvar config
-  await fs.writeJSON(configPath, config, { spaces: 2 });
+  await saveConfig(config);
+
+  // 💾 inicializar data.json (Intenção)
+  await saveData({ resources: [] });
+
+  // 💾 inicializar state.json (Realidade)
+  await saveState({
+    project: {
+      architecture: config.project.architecture,
+      lastSync: new Date().toISOString(),
+    },
+    sync: {
+      mode: config.sync.mode,
+      lastRun: "",
+    },
+    resources: [],
+  });
 
   // =====================================================
   // 📡 API CLIENT
@@ -135,7 +159,7 @@ export async function initCommand(options: { overwrite?: boolean }) {
   let apiClientPath = "";
   let apiTypesPath = "";
 
-  if (config.structure === "module") {
+  if (config.project.architecture === "module") {
     apiClientPath = path.join(cwd, "src/modules/api/api-client.ts");
     apiTypesPath = path.join(cwd, "src/modules/api/api.types.ts");
   } else {

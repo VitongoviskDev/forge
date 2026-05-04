@@ -1,5 +1,13 @@
 export type HttpStatus = 400 | 401 | 403 | 404 | 409 | 422 | 500;
 
+export interface BaseError {
+  message: string;
+}
+
+export interface UnauthorizedError extends BaseError {}
+export interface ForbiddenError extends BaseError {}
+export interface NotFoundError extends BaseError {}
+
 export type ApiError<
   TMap extends Partial<Record<HttpStatus, any>>
 > = {
@@ -11,10 +19,11 @@ export type ApiError<
 }[keyof TMap & HttpStatus];
 
 export type DefaultErrorMap = {
-  400: { message: string };
-  401: { message: string };
-  403: { message: string };
-  404: { message: string };
-  409: { message: string };
-  500: { message: string };
+  400: BaseError;
+  401: UnauthorizedError;
+  403: ForbiddenError;
+  404: NotFoundError;
+  409: BaseError;
+  422: BaseError;
+  500: BaseError;
 };
