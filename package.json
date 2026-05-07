@@ -2,17 +2,19 @@
   "name": "forge",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "./dist/cli.js",
   "bin": {
     "forge": "./dist/cli.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsup src/bin/cli.ts --format esm --splitting && npm run copy:templates",
+    "build": "tsup src/bin/cli.ts --format esm --clean && npm run copy:templates",
     "copy:templates": "cpy src/templates/**/* dist/templates",
     "dev": "node dist/cli.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "module",
@@ -32,5 +34,23 @@
     "ts-node": "^10.9.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
-  }
+  },
+  "exports": {
+    ".": "./dist/cli.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "cli",
+    "typescript",
+    "axios",
+    "tanstack-query",
+    "codegen",
+    "frontend",
+    "architecture"
+  ]
 }

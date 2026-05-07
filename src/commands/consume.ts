@@ -11,11 +11,12 @@ import { toPascalCase, toCamelCase } from "../utils/string.js";
 import { loadTemplate } from "../utils/template.js";
 import { writeFileSafe, fileExists } from "../utils/file.js";
 import { syncCommand } from "./sync.js";
+import inquirer from "inquirer";
 
 export async function consumeCommand(
     method: string, 
     action: string, 
-    resource: string, 
+    resource?: string, 
     apiInstance: string = "api"
 ) {
     const config = ensureForgeInitialized();
@@ -24,8 +25,24 @@ export async function consumeCommand(
 
     const cwd = process.cwd();
     const actionPascal = toPascalCase(action);
-    const resourcePascal = toPascalCase(resource);
     const actionCamel = toCamelCase(action);
+
+    if (!resource) {
+        if (data.resources.length === 0) {
+            console.error(`❌ Nenhum resource encontrado no registro de intenção. Crie um resource primeiro com 'forge make:resource'.`);
+            process.exit(1);
+        }
+        
+        const { selectedResource } = await inquirer.prompt([{
+            type: "list",
+            name: "selectedResource",
+            message: "Qual resource deseja consumir?",
+            choices: data.resources.map(r => r.name)
+        }]);
+        resource = selectedResource as string;
+    }
+
+    const resourcePascal = toPascalCase(resource);
 
     // 1. Validações
     const resourceIntent = data.resources.find(r => r.name === resource);

@@ -54,7 +54,7 @@ program
   program
     .command(`consume:${method}`)
     .argument("<action>")
-    .argument("<resource>")
+    .argument("[resource]")
     .argument("[api]")
     .action(async (action, resource, api) => {
       await consumeCommand(method.toUpperCase(), action, resource, api || "api");

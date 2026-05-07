@@ -4,3 +4,14 @@ export const {{camelName}}Api = axios.create({
 });
 
 setupInterceptors({{camelName}}Api, false);
+
+async {{camelCaseName}}(payload: {{payload}}): Promise<{{response}}> {
+  try{
+    const {data} = await api.post("/{{route}}", payload);
+
+    return data;
+  }catch(error){
+    throw parseApiError<{{errorMap}}>
+  }
+
+},
