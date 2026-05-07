@@ -1,22 +1,37 @@
 import fs from "fs-extra";
 import path from "path";
+import readline from "readline";
 import { Project, SyntaxKind, ObjectLiteralExpression } from "ts-morph";
-import { 
-    ensureForgeInitialized, 
-    ensureForgeData, 
-    saveData, 
-    ensureForgeState 
+import {
+    ensureForgeInitialized,
+    ensureForgeData,
+    saveData,
+    ensureForgeState
 } from "../utils/config.js";
 import { toPascalCase, toCamelCase } from "../utils/string.js";
 import { loadTemplate } from "../utils/template.js";
 import { writeFileSafe, fileExists } from "../utils/file.js";
 import { syncCommand } from "./sync.js";
-import inquirer from "inquirer";
+
+// 🔹 prompt simples
+function askUser(question: string): Promise<string> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer);
+    });
+  });
+}
 
 export async function consumeCommand(
-    method: string, 
-    action: string, 
-    resource?: string, 
+    method: string,
+    action: string,
+    resource?: string,
     apiInstance: string = "api"
 ) {
     const config = ensureForgeInitialized();
@@ -32,20 +47,28 @@ export async function consumeCommand(
             console.error(`❌ Nenhum resource encontrado. Crie um resource primeiro com 'forge make:resource'.`);
             process.exit(1);
         }
-        
+
         const validResources = state.resources.filter(r => r.status !== "missing");
         if (validResources.length === 0) {
             console.error(`❌ Todos os resources estão incompletos ('missing'). Não é possível consumir.`);
             process.exit(1);
         }
 
-        const { selectedResource } = await inquirer.prompt([{
-            type: "list",
-            name: "selectedResource",
-            message: "Qual resource deseja consumir?",
-            choices: validResources.map(r => r.name)
-        }]);
-        resource = selectedResource as string;
+        let question = "\nQual resource deseja usar?\n";
+        validResources.forEach((r, idx) => {
+            question += `${idx + 1} - ${r.name}\n`;
+        });
+        question += `Escolha (1-${validResources.length}): `;
+
+        const answer = await askUser(question);
+        const index = parseInt(answer.trim(), 10) - 1;
+
+        if (isNaN(index) || index < 0 || index >= validResources.length) {
+            console.error("\n❌ Opção inválida.");
+            process.exit(1);
+        }
+
+        resource = validResources[index].name;
     }
 
     const resourcePascal = toPascalCase(resource);
@@ -86,7 +109,7 @@ export async function consumeCommand(
         const paramsStr = (method === "PUT" || method === "DELETE" || method === "GET") ? "`${payload.params.id}`" : "";
         const bodyStr = (method === "POST" || method === "PUT") ? ", payload.body" : "";
         const urlSuffix = paramsStr ? `/${resource}/${paramsStr}` : `"/${resource}/${actionCamel}"`;
-        
+
         // Adicionar import do tipo (ajustado para subpasta)
         apiSource.addImportDeclaration({
             moduleSpecifier: `./endpoints/${actionCamel}.types`,
@@ -95,7 +118,7 @@ export async function consumeCommand(
 
         apiObject.addPropertyAssignment({
             name: actionCamel,
-            initializer: `(payload: ${actionPascal}Payload) => ${apiInstance}.${method.toLowerCase()}<${actionPascal}Response>(${urlSuffix}${bodyStr})`
+            initializer: `async (payload: ${actionPascal}Payload):Promise<${actionPascal}Response> => await ${apiInstance}.${method.toLowerCase()}<${actionPascal}Response>(${urlSuffix}${bodyStr})`
         });
 
         await apiSource.save();
@@ -110,12 +133,12 @@ export async function consumeCommand(
     if (serviceObject) {
         serviceSource.addImportDeclaration({
             moduleSpecifier: `./endpoints/${actionCamel}.types`,
-            namedImports: [`${actionPascal}Payload`]
+            namedImports: [`${actionPascal}Payload`, `${actionPascal}Response`]
         });
 
         serviceObject.addPropertyAssignment({
             name: actionCamel,
-            initializer: `async (payload: ${actionPascal}Payload) => {
+            initializer: `async (payload: ${actionPascal}Payload):Promise<${actionPascal}Response> => {
     try {
       const { data } = await ${resourcePascal}API.${actionCamel}(payload);
       return data;
@@ -135,7 +158,7 @@ export async function consumeCommand(
     const modelName = resourcePascal;
 
     let typesContent = loadTemplate("operation-types.tpl");
-    
+
     const errorMaps: Record<string, string> = {
         GET: "    403: ForbiddenError;\n    404: NotFoundError;",
         POST: "    403: ForbiddenError;\n    422: ${ActionPascal}ValidationError;",
@@ -171,15 +194,15 @@ export async function consumeCommand(
     // 6. Gerar Hook (na subpasta hooks)
     const hookFilePath = path.join(hooksDir, `use${actionPascal}.hook.ts`);
     let hookContent = loadTemplate("operation-hook.tpl");
-    
+
     const isMutation = method !== "GET";
-    
+
     hookContent = hookContent
         .replace(/{{HookType}}/g, isMutation ? "useMutation" : "useQuery")
         .replace(/{{HookProperty}}/g, isMutation ? "mutationFn" : "queryFn")
         .replace(/{{ActionPascal}}/g, actionPascal)
         .replace(/{{ResourcePascal}}/g, resourcePascal)
-        .replace(/{{resource}}/g, `../${resource}`) 
+        .replace(/{{resource}}/g, `../${resource}`)
         .replace(/{{ActionPath}}/g, `../endpoints/${actionCamel}`)
         .replace(/{{ActionCamel}}/g, actionCamel);
 
