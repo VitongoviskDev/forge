@@ -2,8 +2,9 @@ import fs from "fs-extra";
 import path from "path";
 import { loadTemplate } from "../utils/template.js";
 import { toPascalCase, toCamelCase } from "../utils/string.js";
-import { ensureForgeInitialized } from "../utils/config.js";
+import { ensureForgeInitialized, ensureForgeData, saveData } from "../utils/config.js";
 import { writeFileSafe } from "../utils/file.js";
+import { syncCommand } from "./sync.js";
 
 export async function makeApiCommand(name: string) {
   const cwd = process.cwd();
@@ -42,4 +43,14 @@ export async function makeApiCommand(name: string) {
   await writeFileSafe(filePath, content);
 
   console.log(`✅ ${pascalName}API criada com sucesso.`);
+
+  const data = ensureForgeData();
+  if (!data.resources.find((r) => r.name === name)) {
+    data.resources.push({ name, methods: [] });
+    await saveData(data);
+  }
+
+  if (config.sync.mode === "auto") {
+    await syncCommand();
+  }
 }

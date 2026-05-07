@@ -28,27 +28,35 @@ export async function consumeCommand(
     const actionCamel = toCamelCase(action);
 
     if (!resource) {
-        if (data.resources.length === 0) {
-            console.error(`❌ Nenhum resource encontrado no registro de intenção. Crie um resource primeiro com 'forge make:resource'.`);
+        if (state.resources.length === 0) {
+            console.error(`❌ Nenhum resource encontrado. Crie um resource primeiro com 'forge make:resource'.`);
             process.exit(1);
         }
         
+        const validResources = state.resources.filter(r => r.status !== "missing");
+        if (validResources.length === 0) {
+            console.error(`❌ Todos os resources estão incompletos ('missing'). Não é possível consumir.`);
+            process.exit(1);
+        }
+
         const { selectedResource } = await inquirer.prompt([{
             type: "list",
             name: "selectedResource",
             message: "Qual resource deseja consumir?",
-            choices: data.resources.map(r => r.name)
+            choices: validResources.map(r => r.name)
         }]);
         resource = selectedResource as string;
     }
 
     const resourcePascal = toPascalCase(resource);
 
-    // 1. Validações
-    const resourceIntent = data.resources.find(r => r.name === resource);
+    // 1. Validações e Auto-Healing de Orfãos
+    let resourceIntent = data.resources.find(r => r.name === resource);
     if (!resourceIntent) {
-        console.error(`❌ Resource "${resource}" não encontrado no registro de intenção.`);
-        process.exit(1);
+        console.log(`\n👻 Resource "${resource}" estava órfão. Registrando intenção automaticamente...`);
+        resourceIntent = { name: resource, methods: [] };
+        data.resources.push(resourceIntent);
+        await saveData(data);
     }
 
     const resourceState = state.resources.find(r => r.name === resource);
