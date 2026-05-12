@@ -1,15 +1,24 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
 import { initCommand } from "../commands/init.js";
 import { moduleCommand } from "../commands/module.js";
 import { addCommand } from "../commands/add.js";
 import { syncCommand } from "../commands/sync.js";
 import { listCommand } from "../commands/list.js";
 
+const pkgPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "../package.json");
+const { version } = JSON.parse(readFileSync(pkgPath, "utf-8"));
+
 const program = new Command();
 
-program.name("forge").description("API contract CLI");
+program
+  .name("forge")
+  .description("API contract CLI")
+  .version(version, "-v, --version", "Exibe a versão do Forge");
 
 program.command("init")
   .option("--overwrite", "Sobrescrever arquivos existentes")
