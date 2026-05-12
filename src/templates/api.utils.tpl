@@ -1,6 +1,6 @@
 import type { AxiosError } from "axios";
 import type { BaseErrorResponse } from "@/types/global.types";
-import type { ApiError, HttpStatus } from "@/types/api.types";
+import type { ApiError, HttpStatus } from "@/modules/api/api.types";
 
 export function parseApiError<
   TMap extends Partial<Record<HttpStatus, any>>

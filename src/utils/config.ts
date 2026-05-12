@@ -7,13 +7,7 @@ const STATE_NAME = "forge.state.json";
 
 export type ForgeConfig = {
   project: {
-    architecture: "layer" | "module";
-    paths: {
-      api: string;
-      service: string;
-      types: string;
-      hooks: string;
-    };
+    architecture: "module";
     modulePath: string;
     apiFile: string;
   };
@@ -29,26 +23,34 @@ export type ForgeData = {
   }>;
 };
 
+export type ForgeFileEntry = {
+  exists: boolean;
+  path: string;
+};
+
+export type ForgeResourceState = {
+  name: string;
+  status: "active" | "missing" | "orphan";
+  files: {
+    api: ForgeFileEntry;
+    service: ForgeFileEntry;
+    types: ForgeFileEntry;      // arquivo <module>.types.ts (interface base do modelo)
+    contracts: ForgeFileEntry;  // pasta contracts/ (ex: createUser.types.ts)
+    hooks: ForgeFileEntry;      // pasta hooks/ (ex: useCreateUser.hook.ts)
+  };
+  methods: Record<string, { status: "active" | "missing"; inSync: boolean }>;
+};
+
 export type ForgeState = {
   project: {
-    architecture: string;
+    architecture: "module";
     lastSync: string;
   };
   sync: {
     mode: string;
     lastRun: string;
   };
-  resources: Array<{
-    name: string;
-    status: "active" | "missing" | "orphan";
-    files: {
-      api: { exists: boolean; path: string };
-      service: { exists: boolean; path: string };
-      type: { exists: boolean; path: string };
-      hooks: { exists: boolean; path: string };
-    };
-    methods: Record<string, { status: "active" | "missing"; inSync: boolean }>;
-  }>;
+  resources: ForgeResourceState[];
 };
 
 export function getConfigPath() {
@@ -84,7 +86,7 @@ export function ensureForgeState(): ForgeState {
   const statePath = getStatePath();
   if (!fs.existsSync(statePath)) {
     return {
-      project: { architecture: "", lastSync: "" },
+      project: { architecture: "module", lastSync: "" },
       sync: { mode: "", lastRun: "" },
       resources: [],
     };

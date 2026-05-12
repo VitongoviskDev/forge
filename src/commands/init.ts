@@ -1,31 +1,16 @@
 import fs from "fs-extra";
 import path from "path";
-import readline from "readline";
 import { execSync } from "child_process";
 import { fileExists, readJson, writeFileSafe } from "../utils/file.js";
 import { loadTemplate } from "../utils/template.js";
-import { 
-  ForgeConfig, 
-  saveConfig, 
-  saveData, 
-  saveState, 
-  getConfigPath 
+import {
+  ForgeConfig,
+  saveConfig,
+  saveData,
+  saveState,
+  getConfigPath,
 } from "../utils/config.js";
-
-// 🔹 prompt simples
-function askUser(question: string): Promise<string> {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer);
-    });
-  });
-}
+import { confirm, select } from "../utils/prompt.js";
 
 export async function initCommand(options: { overwrite?: boolean }) {
   const cwd = process.cwd();
@@ -64,9 +49,9 @@ export async function initCommand(options: { overwrite?: boolean }) {
 
     console.log("\n⚠️ Essas dependências são obrigatórias para o Forge.");
 
-    const answer = await askUser("\nDeseja instalar automaticamente? (Y/N): ");
+    const ok = await confirm("\nDeseja instalar automaticamente? (Y/N): ");
 
-    if (answer.toLowerCase() !== "y") {
+    if (!ok) {
       console.log("\n❌ Instalação cancelada.");
       process.exit(1);
     }
@@ -85,53 +70,24 @@ export async function initCommand(options: { overwrite?: boolean }) {
     }
   }
 
-  // 🧠 escolher estrutura
-  const structureAnswer = await askUser(
-    "\nQual estrutura deseja usar?\n1 - Por camada\n2 - Por módulo\nEscolha (1/2): "
-  );
-
-  const syncAnswer = await askUser(
-    "\nQual o modo de sincronização?\n1 - Automático (auto)\n2 - Manual (manual)\nEscolha (1/2): "
-  );
+  const syncMode = await select(
+    "Qual o modo de sincronização?",
+    { "1": "auto", "2": "manual" },
+    "auto"
+  ) as "auto" | "manual";
 
   let config: ForgeConfig;
-  const syncMode = syncAnswer === "2" ? "manual" : "auto";
 
-  if (structureAnswer === "2") {
-    config = {
-      project: {
-        architecture: "module",
-        paths: {
-          api: "",
-          service: "",
-          types: "",
-          hooks: "",
-        },
-        modulePath: "src/modules",
-        apiFile: "src/modules/api/api-client.ts",
-      },
-      sync: {
-        mode: syncMode,
-      },
-    };
-  } else {
-    config = {
-      project: {
-        architecture: "layer",
-        paths: {
-          api: "src/api",
-          service: "src/services",
-          types: "src/types",
-          hooks: "src/hooks",
-        },
-        modulePath: "",
-        apiFile: "src/api/api-client.ts",
-      },
-      sync: {
-        mode: syncMode,
-      },
-    };
-  }
+  config = {
+    project: {
+      architecture: "module",
+      modulePath: "src/modules",
+      apiFile: "src/modules/api/api-client.ts",
+    },
+    sync: {
+      mode: syncMode,
+    },
+  };
 
   // 💾 salvar config
   await saveConfig(config);
@@ -156,16 +112,8 @@ export async function initCommand(options: { overwrite?: boolean }) {
   // 📡 API CLIENT
   // =====================================================
 
-  let apiClientPath = "";
-  let apiTypesPath = "";
-
-  if (config.project.architecture === "module") {
-    apiClientPath = path.join(cwd, "src/modules/api/api-client.ts");
-    apiTypesPath = path.join(cwd, "src/modules/api/api.types.ts");
-  } else {
-    apiClientPath = path.join(cwd, "src/api/api-client.ts");
-    apiTypesPath = path.join(cwd, "src/types/api.types.ts");
-  }
+  const apiClientPath = path.join(cwd, "src/modules/api/api-client.ts");
+  const apiTypesPath = path.join(cwd, "src/modules/api/api.types.ts");
 
   if (fileExists(apiClientPath) && !options.overwrite) {
     console.log("ℹ️ api-client.ts já existe.");

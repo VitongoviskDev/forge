@@ -1,12 +1,65 @@
 import fs from "fs-extra";
 import path from "path";
-import { 
-  ensureForgeInitialized, 
-  ensureForgeData, 
-  ensureForgeState, 
-  saveState 
+import {
+  ensureForgeInitialized,
+  ensureForgeData,
+  ensureForgeState,
+  saveState,
+  ForgeResourceState,
 } from "../utils/config.js";
 import { fileExists } from "../utils/file.js";
+
+/**
+ * Resolve o estado físico dos arquivos de um módulo.
+ * Verifica: api, service, types (arquivo base), contracts (pasta), hooks (pasta)
+ */
+function resolveModuleFiles(
+  moduleName: string,
+  modulePath: string,
+  cwd: string
+): ForgeResourceState["files"] {
+  const moduleDir = path.join(cwd, modulePath, moduleName);
+
+  const apiPath = path.join(modulePath, moduleName, `${moduleName}.api.ts`);
+  const servicePath = path.join(modulePath, moduleName, `${moduleName}.service.ts`);
+  const typesPath = path.join(modulePath, moduleName, `${moduleName}.types.ts`);
+  const contractsPath = path.join(modulePath, moduleName, "contracts");
+  const hooksPath = path.join(modulePath, moduleName, "hooks");
+
+  return {
+    api: {
+      exists: fileExists(path.join(cwd, apiPath)),
+      path: apiPath,
+    },
+    service: {
+      exists: fileExists(path.join(cwd, servicePath)),
+      path: servicePath,
+    },
+    types: {
+      exists: fileExists(path.join(cwd, typesPath)),
+      path: typesPath,
+    },
+    contracts: {
+      exists: fs.existsSync(path.join(cwd, contractsPath)),
+      path: contractsPath,
+    },
+    hooks: {
+      exists: fs.existsSync(path.join(cwd, hooksPath)),
+      path: hooksPath,
+    },
+  };
+}
+
+/**
+ * Determina o status de um módulo baseado nos arquivos críticos.
+ * Um módulo é "missing" se api.ts ou service.ts não existirem.
+ */
+function resolveModuleStatus(
+  files: ForgeResourceState["files"]
+): ForgeResourceState["status"] {
+  if (!files.api.exists || !files.service.exists) return "missing";
+  return "active";
+}
 
 export async function syncCommand() {
   console.log("🔄 Sincronizando projeto...");
@@ -14,154 +67,84 @@ export async function syncCommand() {
   const config = ensureForgeInitialized();
   const data = ensureForgeData();
   const state = ensureForgeState();
-
   const cwd = process.cwd();
+  const modulePath = config.project.modulePath;
 
-  // 1. Atualizar metadados do projeto no state
-  state.project.architecture = config.project.architecture;
+  // 1. Atualizar metadados globais
+  state.project.architecture = "module";
   state.project.lastSync = new Date().toISOString();
   state.sync.mode = config.sync.mode;
   state.sync.lastRun = new Date().toISOString();
 
-  const observedResources: typeof state.resources = [];
+  const observedResources: ForgeResourceState[] = [];
+  const registeredNames = new Set<string>(data.resources.map(r => r.name));
 
-  // 2. Processar recursos registrados no DATA (Intenção)
-  for (const intendedResource of data.resources) {
-    const name = intendedResource.name;
-    let resourcePath = "";
+  // 2. Processar módulos registrados no DATA (intenção)
+  for (const intendedModule of data.resources) {
+    const { name } = intendedModule;
+    const files = resolveModuleFiles(name, modulePath, cwd);
+    const status = resolveModuleStatus(files);
 
-    if (config.project.architecture === "module") {
-      resourcePath = path.join(config.project.modulePath, name);
-    }
-
-    const files = {
-      api: { exists: false, path: "" },
-      service: { exists: false, path: "" },
-      type: { exists: false, path: "" },
-      hooks: { exists: false, path: "" }
-    };
-
-    // Determinar caminhos dos arquivos baseados na arquitetura
-    if (config.project.architecture === "module") {
-      files.api.path = path.join(resourcePath, `${name}.api.ts`);
-      files.service.path = path.join(resourcePath, `${name}.service.ts`);
-      files.type.path = path.join(resourcePath, `${name}.type.ts`);
-      files.hooks.path = path.join(resourcePath, `${name}.hooks.ts`);
-    } else {
-      files.api.path = path.join(config.project.paths.api, `${name}.api.ts`);
-      files.service.path = path.join(config.project.paths.service, `${name}.service.ts`);
-      files.type.path = path.join(config.project.paths.types, `${name}.type.ts`);
-      files.hooks.path = path.join(config.project.paths.hooks, `${name}.hooks.ts`);
-    }
-
-    // Checar existência física
-    files.api.exists = fileExists(path.join(cwd, files.api.path));
-    files.service.exists = fileExists(path.join(cwd, files.service.path));
-    files.type.exists = fileExists(path.join(cwd, files.type.path));
-    files.hooks.exists = fileExists(path.join(cwd, files.hooks.path));
-
-    const isMissingCritical = !files.api.exists || !files.service.exists;
-    const status = isMissingCritical ? "missing" : "active";
+    // Preservar metadados de métodos existentes no state anterior
+    const previousState = state.resources.find(r => r.name === name);
 
     observedResources.push({
       name,
       status,
       files,
-      methods: {} // TODO: Implementar scan de métodos no futuro
+      methods: previousState?.methods ?? {},
     });
   }
 
-  // 3. Detectar recursos órfãos (existem no disco mas não no data.json)
-  const foundResources = new Set<string>();
+  // 3. Detectar módulos órfãos (existem no disco mas não no data.json)
+  const moduleBaseDir = path.join(cwd, modulePath);
 
-  if (config.project.architecture === "module") {
-    const moduleDir = path.join(cwd, config.project.modulePath);
-    if (fs.existsSync(moduleDir)) {
-      const dirs = fs.readdirSync(moduleDir, { withFileTypes: true });
-      for (const dir of dirs) {
-        if (dir.isDirectory() && dir.name !== "api") {
-          foundResources.add(dir.name);
-        }
-      }
-    }
-  } else {
-    const pathsToScan = [
-      config.project.paths.api,
-      config.project.paths.service,
-      config.project.paths.types,
-      config.project.paths.hooks
-    ];
-    for (const p of pathsToScan) {
-      if (!p) continue;
-      const dir = path.join(cwd, p);
-      if (fs.existsSync(dir)) {
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-          const match = file.match(/^(.+)\.(api|service|type|hooks)\.ts$/);
-          if (match) {
-            foundResources.add(match[1]);
-          }
-        }
-      }
-    }
-  }
+  if (fs.existsSync(moduleBaseDir)) {
+    const dirs = fs.readdirSync(moduleBaseDir, { withFileTypes: true });
 
-  for (const name of foundResources) {
-    if (!data.resources.find(r => r.name === name)) {
-      let resourcePath = "";
-      if (config.project.architecture === "module") {
-        resourcePath = path.join(config.project.modulePath, name);
-      }
+    for (const dir of dirs) {
+      // Ignorar a pasta "api" (infraestrutura global) e não-diretórios
+      if (!dir.isDirectory() || dir.name === "api") continue;
 
-      const files = {
-        api: { exists: false, path: "" },
-        service: { exists: false, path: "" },
-        type: { exists: false, path: "" },
-        hooks: { exists: false, path: "" }
-      };
+      const name = dir.name;
+      if (registeredNames.has(name)) continue; // já processado
 
-      if (config.project.architecture === "module") {
-        files.api.path = path.join(resourcePath, `${name}.api.ts`);
-        files.service.path = path.join(resourcePath, `${name}.service.ts`);
-        files.type.path = path.join(resourcePath, `${name}.type.ts`);
-        files.hooks.path = path.join(resourcePath, `${name}.hooks.ts`);
-      } else {
-        files.api.path = path.join(config.project.paths.api, `${name}.api.ts`);
-        files.service.path = path.join(config.project.paths.service, `${name}.service.ts`);
-        files.type.path = path.join(config.project.paths.types, `${name}.type.ts`);
-        files.hooks.path = path.join(config.project.paths.hooks, `${name}.hooks.ts`);
-      }
-
-      files.api.exists = fileExists(path.join(cwd, files.api.path));
-      files.service.exists = fileExists(path.join(cwd, files.service.path));
-      files.type.exists = fileExists(path.join(cwd, files.type.path));
-      files.hooks.exists = fileExists(path.join(cwd, files.hooks.path));
+      const files = resolveModuleFiles(name, modulePath, cwd);
 
       observedResources.push({
         name,
         status: "orphan",
         files,
-        methods: {}
+        methods: {},
       });
     }
   }
 
   state.resources = observedResources;
-
   await saveState(state);
 
-  console.log("\n✅ Sync finalizado!");
-  
-  // Relatório rápido
-  const missing = state.resources.filter(r => r.status === "missing");
+  // 4. Relatório de sync
+  console.log("\n✅ Sync finalizado!\n");
+
+  const active = observedResources.filter(r => r.status === "active");
+  const missing = observedResources.filter(r => r.status === "missing");
+  const orphans = observedResources.filter(r => r.status === "orphan");
+
+  console.log(`📊 Módulos: ${active.length} ativos, ${missing.length} incompletos, ${orphans.length} órfãos`);
+
   if (missing.length > 0) {
-    console.log(`\n⚠️  ${missing.length} recursos com arquivos faltando:`);
-    missing.forEach(r => console.log(`   - ${r.name}`));
+    console.log(`\n⚠️  Módulos com arquivos faltando:`);
+    missing.forEach(r => {
+      const missingFiles = Object.entries(r.files)
+        .filter(([, v]) => !v.exists)
+        .map(([k]) => k);
+      console.log(`   - ${r.name} (faltando: ${missingFiles.join(", ")})`);
+    });
   }
 
-  const orphans = state.resources.filter(r => r.status === "orphan");
   if (orphans.length > 0) {
-    console.log(`\n👻 ${orphans.length} recursos órfãos detectados no disco:`);
+    console.log(`\n👻 Módulos órfãos detectados (existem no disco, mas não registrados):`);
     orphans.forEach(r => console.log(`   - ${r.name}`));
+    console.log(`\n   💡 Dica: rode 'forge module ${orphans[0].name}' para registrá-los.`);
   }
 }
